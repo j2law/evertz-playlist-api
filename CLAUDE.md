@@ -8,6 +8,162 @@ This is an HTTP REST API service for managing broadcaster channel playlists with
 
 **Primary Goal:** Correctness and testability over performance. E2E tests through HTTP endpoints are the main deliverable.
 
+## Technology Stack
+
+- **Framework**: Spring Boot 3.x
+- **Language**: Java 21 (use modern features: records, pattern matching, sealed classes where appropriate)
+- **Database**: H2 (embedded, file-based for persistence)
+- **ORM**: Spring Data JPA
+- **API Documentation**: SpringDoc OpenAPI (Swagger UI)
+- **Testing**: JUnit 5, Mockito, @SpringBootTest, @WebMvcTest
+
+## Architectural Principles
+
+### SOLID Principles (MUST follow)
+
+1. **Single Responsibility**: Each class has one reason to change
+   - Controllers handle HTTP concerns only
+   - Services contain business logic only
+   - Repositories handle data access only
+
+2. **Open/Closed**: Open for extension, closed for modification
+   - Use interfaces for services and repositories
+   - Favor composition over inheritance
+
+3. **Liskov Substitution**: Subtypes must be substitutable for their base types
+   - Interface implementations must honor contracts
+
+4. **Interface Segregation**: No client should depend on methods it doesn't use
+   - Keep interfaces focused and cohesive
+
+5. **Dependency Inversion**: Depend on abstractions, not concretions
+   - Use constructor injection
+   - Program to interfaces
+
+### Clean Architecture (Layered Boundaries)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Presentation Layer (Controllers, Request/Response DTOs)    │
+├─────────────────────────────────────────────────────────────┤
+│  Application Layer (Services, Business Logic)               │
+├─────────────────────────────────────────────────────────────┤
+│  Domain Layer (Entities, Value Objects, Domain Exceptions)  │
+├─────────────────────────────────────────────────────────────┤
+│  Infrastructure Layer (Repositories, External Services)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Package Structure:**
+```
+com.evertz.playlist
+├── controller/          # REST controllers, Request/Response DTOs
+├── service/             # Business logic interfaces and implementations
+├── domain/              # JPA entities, value objects
+├── repository/          # Spring Data JPA repositories (DAOs)
+├── exception/           # Custom exceptions and global handler
+└── config/              # Configuration classes
+```
+
+**Dependency Rules:**
+- Controllers depend on Services (interfaces)
+- Services depend on Repositories (interfaces)
+- No layer may depend on a layer above it
+- Domain layer has NO external dependencies
+
+### DTOs and DAOs
+
+**DTOs (Data Transfer Objects):**
+- Use Java Records for immutability
+- Separate Request DTOs and Response DTOs
+- DTOs live in the controller package
+- Manual mapping between DTOs and Entities (no MapStruct/Lombok)
+
+**Example:**
+```java
+// Request DTO
+public record CreatePlaylistItemRequest(
+    String title,
+    int index,
+    String clientFingerprint
+) {}
+
+// Response DTO
+public record PlaylistItemResponse(
+    String id,
+    String title,
+    int index
+) {}
+
+// Manual mapping in service or controller
+public static PlaylistItemResponse toResponse(PlaylistItem entity) {
+    return new PlaylistItemResponse(
+        entity.getId(),
+        entity.getTitle(),
+        entity.getIndex()
+    );
+}
+```
+
+**DAOs (Data Access Objects):**
+- Implemented via Spring Data JPA repositories
+- Interface-based, Spring provides implementation
+- Custom queries via @Query annotation when needed
+
+### Constructor Injection (Required)
+
+Always use constructor injection, never field injection:
+
+```java
+@Service
+public class PlaylistServiceImpl implements PlaylistService {
+    private final PlaylistItemRepository playlistItemRepository;
+    private final ChannelRepository channelRepository;
+
+    // Constructor injection - no @Autowired needed with single constructor
+    public PlaylistServiceImpl(
+            PlaylistItemRepository playlistItemRepository,
+            ChannelRepository channelRepository) {
+        this.playlistItemRepository = playlistItemRepository;
+        this.channelRepository = channelRepository;
+    }
+}
+```
+
+### Exception Handling
+
+**Global Exception Handler with @ControllerAdvice:**
+
+```java
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(FingerprintMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleFingerprintMismatch(FingerprintMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ErrorResponse("PLAYLIST_FINGERPRINT_MISMATCH", ex.getServerFingerprint()));
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ErrorResponse("NOT_FOUND", ex.getMessage()));
+    }
+}
+```
+
+**Custom Exceptions:**
+- `FingerprintMismatchException` - for 409 conflicts
+- `ResourceNotFoundException` - for 404 errors
+- `InvalidOperationException` - for 400 bad requests
+
+### OOP Principles
+
+- **Encapsulation**: Keep fields private, expose behavior through methods
+- **Abstraction**: Hide implementation details behind interfaces
+- **Composition over Inheritance**: Favor has-a over is-a relationships
+- **Immutability**: Use records for DTOs, make entities mutable only where necessary
+
 ## Critical Architectural Concepts
 
 ### 1. Optimistic Concurrency Control (Fingerprint Pattern)
@@ -67,51 +223,57 @@ The playlist MUST maintain these invariants after EVERY operation:
 
 ### Development Workflow
 ```bash
-# Install dependencies
-npm ci                          # Node.js
-pip install -r requirements.txt # Python
+# Build the project
+./mvnw clean install
 
-# Run service
-npm start                       # Typically starts on localhost:3000 or 8080
-python -m uvicorn main:app      # Python example
+# Run the service (starts on localhost:8080)
+./mvnw spring-boot:run
 
-# Run tests
-npm test                        # E2E tests should start server automatically
-pytest                          # Python
+# Run all tests
+./mvnw test
+
+# Run only unit tests
+./mvnw test -Dtest="*Test"
+
+# Run only integration tests
+./mvnw test -Dtest="*IT"
 
 # Manual testing
-curl http://localhost:3000/health
+curl http://localhost:8080/health
+
+# Access Swagger UI
+# Open browser: http://localhost:8080/swagger-ui.html
 ```
 
 ### Sample API Workflow
 ```bash
 # 1. Get initial state
-curl http://localhost:3000/api/channels/CH1/playlist/items?limit=50
+curl http://localhost:8080/api/channels/CH1/playlist/items?limit=50
 
 # 2. Extract serverFingerprint from response, use as clientFingerprint
 
 # 3. Insert item at index 0
-curl -X POST http://localhost:3000/api/channels/CH1/playlist/items \
+curl -X POST http://localhost:8080/api/channels/CH1/playlist/items \
   -H "Content-Type: application/json" \
   -d '{"title":"Breaking News","index":0,"clientFingerprint":"abc123..."}'
 
 # 4. Attempt with stale fingerprint (should get 409)
-curl -X POST http://localhost:3000/api/channels/CH1/playlist/items \
+curl -X POST http://localhost:8080/api/channels/CH1/playlist/items \
   -H "Content-Type: application/json" \
   -d '{"title":"Another Item","index":0,"clientFingerprint":"OLD_FINGERPRINT"}'
 
 # 5. Delete item
-curl -X DELETE http://localhost:3000/api/channels/CH1/playlist/items/ITEM_ID \
+curl -X DELETE http://localhost:8080/api/channels/CH1/playlist/items/ITEM_ID \
   -H "Content-Type: application/json" \
   -d '{"clientFingerprint":"current_fingerprint"}'
 
 # 6. Move item
-curl -X POST http://localhost:3000/api/channels/CH1/playlist/items/ITEM_ID/move \
+curl -X POST http://localhost:8080/api/channels/CH1/playlist/items/ITEM_ID/move \
   -H "Content-Type: application/json" \
   -d '{"newIndex":5,"clientFingerprint":"current_fingerprint"}'
 
 # 7. Sync check
-curl -X POST http://localhost:3000/api/channels/CH1/playlist/sync-check \
+curl -X POST http://localhost:8080/api/channels/CH1/playlist/sync-check \
   -H "Content-Type: application/json" \
   -d '{"clientFingerprint":"current_fingerprint"}'
 ```
@@ -121,9 +283,10 @@ curl -X POST http://localhost:3000/api/channels/CH1/playlist/sync-check \
 ### Critical Implementation Points
 
 **1. Atomicity of Shift Operations**
-- Fingerprint check + shift + update MUST be atomic (single transaction/lock)
-- If using in-memory: Ensure proper locking
-- If using database: Use transactions or atomic updates
+- Fingerprint check + shift + update MUST be atomic
+- Spring Data JPA handles transactions at the repository level by default
+- For complex operations, ensure service methods handle the full atomic unit
+- Use database-level constraints where possible (unique indexes on (channelId, index))
 
 **2. Fingerprint Computation**
 - Must be deterministic (same playlist → same fingerprint)
@@ -158,6 +321,16 @@ MOVE from oldIndex to newIndex:
 
 ## Testing Strategy
 
+### Test Organization
+
+```
+src/test/java/com/evertz/playlist/
+├── controller/              # @WebMvcTest - Controller unit tests
+├── service/                 # Unit tests with Mockito
+├── repository/              # @DataJpaTest - Repository tests
+└── integration/             # @SpringBootTest - Full integration tests (E2E)
+```
+
 ### E2E Test Categories
 
 1. **Ordering invariants** - After each operation, verify contiguous, no gaps, no duplicates
@@ -169,44 +342,87 @@ MOVE from oldIndex to newIndex:
 
 ### Test Patterns
 
-**Helper function** to verify playlist health:
-```javascript
-async function assertPlaylistHealthy(channelId) {
-  const response = await fetch(`/api/channels/${channelId}/playlist/items?limit=9999`);
-  const { items, totalCount } = await response.json();
+**Integration Test Setup:**
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class PlaylistIntegrationTest {
 
-  // Assert count matches
-  assert.equal(items.length, totalCount);
+    @Autowired
+    private TestRestTemplate restTemplate;
 
-  // Assert contiguous (0-based example)
-  items.forEach((item, idx) => {
-    assert.equal(item.index, idx);
-  });
+    @Test
+    void shouldReturn409WhenFingerprintMismatch() {
+        // Get current fingerprint
+        var listResponse = restTemplate.getForObject(
+            "/api/channels/CH1/playlist/items",
+            PlaylistResponse.class
+        );
+        String fp1 = listResponse.serverFingerprint();
 
-  // Assert no duplicate indexes
-  const indexes = items.map(i => i.index);
-  assert.equal(new Set(indexes).size, indexes.length);
+        // Make a change
+        var request1 = new CreatePlaylistItemRequest("Item", 0, fp1);
+        restTemplate.postForEntity("/api/channels/CH1/playlist/items", request1, Void.class);
+
+        // Try to use old fingerprint (should fail with 409)
+        var request2 = new CreatePlaylistItemRequest("Item2", 0, fp1);
+        var response = restTemplate.postForEntity(
+            "/api/channels/CH1/playlist/items",
+            request2,
+            ErrorResponse.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
 }
 ```
 
-**Fingerprint mismatch pattern**:
-```javascript
-// Get current fingerprint
-const list1 = await fetch('/api/channels/CH1/playlist/items').then(r => r.json());
-const fp1 = list1.serverFingerprint;
+**Controller Unit Test:**
+```java
+@WebMvcTest(PlaylistController.class)
+class PlaylistControllerTest {
 
-// Make a change
-await fetch('/api/channels/CH1/playlist/items', {
-  method: 'POST',
-  body: JSON.stringify({ title: 'Item', index: 0, clientFingerprint: fp1 })
-});
+    @Autowired
+    private MockMvc mockMvc;
 
-// Try to use old fingerprint (should fail with 409)
-const response = await fetch('/api/channels/CH1/playlist/items', {
-  method: 'POST',
-  body: JSON.stringify({ title: 'Item2', index: 0, clientFingerprint: fp1 })
-});
-assert.equal(response.status, 409);
+    @MockBean
+    private PlaylistService playlistService;
+
+    @Test
+    void shouldReturnPlaylistItems() throws Exception {
+        when(playlistService.getItems("CH1", 0, 50))
+            .thenReturn(new PlaylistResponse(List.of(), 0, "fingerprint"));
+
+        mockMvc.perform(get("/api/channels/CH1/playlist/items")
+                .param("limit", "50"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.serverFingerprint").value("fingerprint"));
+    }
+}
+```
+
+**Helper method** to verify playlist health:
+```java
+private void assertPlaylistHealthy(String channelId) {
+    var response = restTemplate.getForObject(
+        "/api/channels/{channelId}/playlist/items?limit=9999",
+        PlaylistResponse.class,
+        channelId
+    );
+
+    // Assert count matches
+    assertThat(response.items()).hasSize(response.totalCount());
+
+    // Assert contiguous (0-based)
+    for (int i = 0; i < response.items().size(); i++) {
+        assertThat(response.items().get(i).index()).isEqualTo(i);
+    }
+
+    // Assert no duplicate indexes
+    var indexes = response.items().stream()
+        .map(PlaylistItemResponse::index)
+        .toList();
+    assertThat(indexes).doesNotHaveDuplicates();
+}
 ```
 
 ## API Endpoints
@@ -224,8 +440,8 @@ assert.equal(response.status, 409);
 - **Playlist size**: 1,000-4,000 items (design for this scale)
 - **itemId generation**: Your choice (server-generated UUID vs client-provided) - document it
 - **Indexing base**: Your choice (0-based vs 1-based) - MUST document in ASSUMPTIONS.md
-- **Persistence**: Required, choice is yours (SQLite, JSON file, PostgreSQL, in-memory with WAL)
-- **Technology stack**: Open (Node.js, Python, Go, etc.)
+- **Persistence**: H2 embedded database (file-based)
+- **Technology stack**: Spring Boot 3.x, Java 21, Spring Data JPA
 
 ## Documentation Deliverables
 
@@ -245,15 +461,27 @@ assert.equal(response.status, 409);
 
 ## Implementation Checklist
 
-Design decisions that MUST be documented in ASSUMPTIONS.md before coding:
+Design decisions documented in ASSUMPTIONS.md:
 
-- [ ] 0-based or 1-based indexing?
-- [ ] Server-generated or client-provided itemIds?
-- [ ] Cursor or offset pagination?
-- [ ] What goes into fingerprint computation?
-- [ ] How to handle insert at index > N? (append, error, clamp to N)
-- [ ] How to handle move to index > N?
-- [ ] What HTTP status for delete non-existent item? (404, 204, 400)
-- [ ] Where does clientFingerprint go on DELETE? (request body, header, query param)
-- [ ] What persistence layer? (SQLite, PostgreSQL, file, memory+WAL)
-- [ ] How to ensure shift operations are atomic?
+- [x] 0-based or 1-based indexing? → **0-based**
+- [x] Server-generated or client-provided itemIds? → **Server-generated UUID**
+- [x] Cursor or offset pagination? → **Offset-based with fingerprint staleness detection**
+- [x] What goes into fingerprint computation? → **SHA-256 of ordered index:itemId pairs**
+- [x] How to handle insert at index > N? → **400 Bad Request (strict)**
+- [x] How to handle move to index > N? → **400 Bad Request (strict)**
+- [x] What HTTP status for delete non-existent item? → **404 Not Found**
+- [x] Where does clientFingerprint go on DELETE? → **Request body**
+- [x] What persistence layer? → **H2 embedded database with Spring Data JPA**
+- [x] How to ensure shift operations are atomic? → **Single service method with JPA batch updates**
+
+Technology decisions (RESOLVED):
+
+- [x] Framework → Spring Boot 3.x
+- [x] Language → Java 21
+- [x] Database → H2 (embedded, file-based)
+- [x] ORM → Spring Data JPA
+- [x] Testing → JUnit 5 + Mockito + @SpringBootTest + @WebMvcTest
+- [x] API Docs → SpringDoc OpenAPI (Swagger UI)
+- [x] Exception Handling → @ControllerAdvice with custom exceptions
+- [x] Dependency Injection → Constructor injection
+- [x] DTOs → Java Records with manual mapping
