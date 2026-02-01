@@ -64,3 +64,4 @@ spring-shell.log
 
 # Test output
 test-output/
+/.claude/settings.local.json
