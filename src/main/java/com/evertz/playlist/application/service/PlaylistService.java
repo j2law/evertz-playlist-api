@@ -63,6 +63,13 @@ public class PlaylistService {
     ) {}
 
     /**
+     * Result record for sync-check operation.
+     */
+    public record SyncCheckResult(
+            String serverFingerprint
+    ) {}
+
+    /**
      * Gets paginated playlist items for a channel.
      *
      * @param channelId the channel identifier
@@ -201,6 +208,24 @@ public class PlaylistService {
 
         String newFingerprint = computeFingerprint(channelId);
         return new MoveResult(movedItem, newFingerprint);
+    }
+
+    /**
+     * Checks if the client fingerprint matches the server fingerprint.
+     * Throws FingerprintMismatchException if they don't match.
+     *
+     * @param channelId         the channel identifier
+     * @param clientFingerprint the client's last-known fingerprint
+     * @return the sync-check result with the server fingerprint
+     */
+    public SyncCheckResult syncCheck(String channelId, String clientFingerprint) {
+        String serverFingerprint = computeFingerprint(channelId);
+
+        if (!serverFingerprint.equals(clientFingerprint)) {
+            throw new FingerprintMismatchException(serverFingerprint);
+        }
+
+        return new SyncCheckResult(serverFingerprint);
     }
 
     private void validateMoveIndex(int index, int totalCount) {

@@ -130,12 +130,49 @@ The unique constraint on `(channel_id, item_index)` ensures playlist integrity b
 
 ## Index Shifting Implementation
 
-### Atomicity
+### How Shifting is Implemented Safely
 
-All mutation operations (insert, delete, move) are wrapped in `@Transactional` to ensure atomicity of:
-1. Fingerprint validation
-2. Index shifting
-3. Item creation/deletion/update
+The shifting implementation uses multiple layers of safety:
+
+**1. Transactional Atomicity**
+
+All mutation operations (insert, delete, move) are wrapped in Spring's `@Transactional` annotation. This ensures:
+- All database operations within a mutation succeed or fail together
+- On any failure (constraint violation, exception), all changes are rolled back
+- The playlist is never left in an inconsistent state
+
+**2. Fingerprint-First Validation**
+
+Every mutation validates the fingerprint BEFORE making any changes:
+```
+1. Compute current server fingerprint
+2. Compare with client fingerprint
+3. If mismatch → throw exception (no changes made)
+4. If match → proceed with mutation
+```
+
+This prevents stale clients from corrupting the playlist state.
+
+**3. Bulk Update Queries**
+
+Index shifting uses bulk UPDATE queries rather than loading and saving individual entities:
+```sql
+UPDATE playlist_items SET item_index = item_index + 1
+WHERE channel_id = ? AND item_index >= ?
+```
+
+This is:
+- **Atomic**: Single SQL statement
+- **Efficient**: No N+1 query problem
+- **Safe**: Database handles concurrent access
+
+**4. Operation Ordering**
+
+Each operation follows a specific order to maintain invariants:
+
+- **Insert**: Shift existing items first, then insert new item
+- **Delete**: Delete item first, then shift remaining items
+- **Move**: Use temporary index, shift affected range, set final index
 
 ### Unique Constraint Handling
 
@@ -167,6 +204,27 @@ MOVE from oldIndex to newIndex:
     UPDATE SET index = index + 1 WHERE channelId = ? AND index >= newIndex AND index < oldIndex
   UPDATE item SET index = newIndex
 ```
+
+## API Endpoints Summary
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/channels/{channelId}/playlist/items` | List items (paginated) |
+| POST | `/api/channels/{channelId}/playlist/items` | Insert item at index |
+| DELETE | `/api/channels/{channelId}/playlist/items/{itemId}` | Delete item |
+| POST | `/api/channels/{channelId}/playlist/items/{itemId}/move` | Move item to new index |
+| POST | `/api/channels/{channelId}/playlist/sync-check` | Verify fingerprint match |
+
+### Success Responses
+
+| Endpoint | Status | Response Body |
+|----------|--------|---------------|
+| List items | 200 | `{ items, page, totalCount, serverFingerprint }` |
+| Insert | 201 | `{ item, serverFingerprint }` |
+| Delete | 200 | `{ serverFingerprint }` |
+| Move | 200 | `{ item, serverFingerprint }` |
+| Sync-check | 200 | `{ serverFingerprint }` |
 
 ## API Schema Pattern
 

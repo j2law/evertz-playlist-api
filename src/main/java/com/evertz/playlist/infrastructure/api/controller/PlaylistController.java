@@ -10,6 +10,8 @@ import com.evertz.playlist.infrastructure.api.dto.MoveItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PageInfo;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistResponse;
+import com.evertz.playlist.infrastructure.api.dto.SyncCheckRequest;
+import com.evertz.playlist.infrastructure.api.dto.SyncCheckResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -117,5 +119,18 @@ public class PlaylistController {
         );
 
         return ResponseEntity.ok(new MoveItemResponse(itemResponse, result.serverFingerprint()));
+    }
+
+    @PostMapping("/sync-check")
+    public ResponseEntity<SyncCheckResponse> syncCheck(
+            @PathVariable String channelId,
+            @RequestBody SyncCheckRequest request
+    ) {
+        PlaylistService.SyncCheckResult result = playlistService.syncCheck(
+                channelId,
+                request.clientFingerprint()
+        );
+
+        return ResponseEntity.ok(new SyncCheckResponse(result.serverFingerprint()));
     }
 }
