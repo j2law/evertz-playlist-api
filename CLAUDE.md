@@ -44,88 +44,166 @@ This is an HTTP REST API service for managing broadcaster channel playlists with
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Presentation Layer (Controllers, Request/Response DTOs)    │
+│  Infrastructure Layer (Controllers, JPA Entities, Repos)    │
 ├─────────────────────────────────────────────────────────────┤
-│  Application Layer (Services, Business Logic)               │
+│  Application Layer (Services, Persistence Interfaces/Ports) │
 ├─────────────────────────────────────────────────────────────┤
-│  Domain Layer (Entities, Value Objects, Domain Exceptions)  │
-├─────────────────────────────────────────────────────────────┤
-│  Infrastructure Layer (Repositories, External Services)     │
+│  Core Layer (Domain Entities, Value Objects, Exceptions)    │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Three-Layer Separation:**
+
+1. **Core Layer** (`core/`) - Innermost, NO framework dependencies
+   - Pure domain entities (plain Java classes)
+   - Value objects
+   - Domain exceptions
+   - Business rules embedded in entities
+
+2. **Application Layer** (`application/`) - Business logic orchestration
+   - Service interfaces and implementations
+   - Persistence port interfaces (abstractions for data access)
+   - Use case orchestration
+   - Depends only on Core layer
+
+3. **Infrastructure Layer** (`infrastructure/`) - Framework-dependent implementations
+   - REST Controllers + Request/Response DTOs
+   - JPA Entities (separate from Core entities, with `@Entity` annotations)
+   - Spring Data JPA Repositories (implements persistence ports)
+   - Mappers between JPA entities and Core entities
+   - Configuration classes
+   - Depends on Application and Core layers
 
 **Package Structure:**
 ```
 com.evertz.playlist
-├── controller/          # REST controllers, Request/Response DTOs
-├── service/             # Business logic interfaces and implementations
-├── domain/              # JPA entities, value objects
-├── repository/          # Spring Data JPA repositories (DAOs)
-├── exception/           # Custom exceptions and global handler
-└── config/              # Configuration classes
+├── core/                        # NO framework dependencies
+│   ├── model/                   # Pure domain entities
+│   └── exception/               # Domain exceptions
+├── application/                 # Business logic layer
+│   ├── service/                 # Service interfaces and implementations
+│   └── port/                    # Persistence port interfaces
+└── infrastructure/              # Framework-dependent
+    ├── api/                     # REST controllers
+    │   ├── controller/          # Controllers
+    │   └── dto/                 # Request/Response DTOs
+    ├── persistence/             # Database layer
+    │   ├── entity/              # JPA entities (with annotations)
+    │   ├── repository/          # Spring Data JPA repositories
+    │   └── adapter/             # Adapters implementing ports
+    └── config/                  # Spring configuration
 ```
 
 **Dependency Rules:**
-- Controllers depend on Services (interfaces)
-- Services depend on Repositories (interfaces)
-- No layer may depend on a layer above it
-- Domain layer has NO external dependencies
+- Infrastructure depends on Application and Core
+- Application depends only on Core
+- Core has ZERO external dependencies (no Spring, no JPA, no frameworks)
+- Dependencies always point inward (toward Core)
 
-### DTOs and DAOs
+**Key Principle:** Core entities are pure Java classes. JPA entities in Infrastructure are separate classes that map to/from Core entities. This keeps the domain model clean and testable without framework coupling.
+
+### DTOs and Persistence
 
 **DTOs (Data Transfer Objects):**
 - Use Java Records for immutability
 - Separate Request DTOs and Response DTOs
-- DTOs live in the controller package
-- Manual mapping between DTOs and Entities (no MapStruct/Lombok)
+- DTOs live in `infrastructure/api/dto/`
+- Manual mapping between DTOs and Core entities (no MapStruct/Lombok)
 
 **Example:**
 ```java
-// Request DTO
+// Request DTO (infrastructure/api/dto/)
 public record CreatePlaylistItemRequest(
     String title,
     int index,
     String clientFingerprint
 ) {}
 
-// Response DTO
+// Response DTO (infrastructure/api/dto/)
 public record PlaylistItemResponse(
     String id,
     String title,
     int index
 ) {}
 
-// Manual mapping in service or controller
-public static PlaylistItemResponse toResponse(PlaylistItem entity) {
+// Manual mapping in controller or dedicated mapper
+public static PlaylistItemResponse toResponse(PlaylistItem coreEntity) {
     return new PlaylistItemResponse(
-        entity.getId(),
-        entity.getTitle(),
-        entity.getIndex()
+        coreEntity.getId(),
+        coreEntity.getTitle(),
+        coreEntity.getIndex()
     );
 }
 ```
 
-**DAOs (Data Access Objects):**
-- Implemented via Spring Data JPA repositories
-- Interface-based, Spring provides implementation
-- Custom queries via @Query annotation when needed
+**JPA Entities vs Core Entities:**
+- Core entities (`core/model/`) are pure Java classes with no annotations
+- JPA entities (`infrastructure/persistence/entity/`) have `@Entity`, `@Table`, etc.
+- Adapters map between JPA entities and Core entities
+
+**Example:**
+```java
+// Core entity (core/model/) - NO framework dependencies
+public class PlaylistItem {
+    private final String id;
+    private final String channelId;
+    private final String title;
+    private int index;
+    // Pure Java, no annotations
+}
+
+// JPA entity (infrastructure/persistence/entity/)
+@Entity
+@Table(name = "playlist_items")
+public class PlaylistItemEntity {
+    @Id
+    private String id;
+    @Column(name = "channel_id")
+    private String channelId;
+    // JPA annotations for persistence
+}
+```
+
+**Persistence Ports and Adapters:**
+- Port interfaces live in `application/port/` (e.g., `PlaylistItemRepository`)
+- Adapter implementations live in `infrastructure/persistence/adapter/`
+- Spring Data JPA repositories are implementation details in infrastructure
 
 ### Constructor Injection (Required)
 
 Always use constructor injection, never field injection:
 
 ```java
+// Service in application layer depends on port interface (not JPA repository directly)
 @Service
 public class PlaylistServiceImpl implements PlaylistService {
-    private final PlaylistItemRepository playlistItemRepository;
-    private final ChannelRepository channelRepository;
+    private final PlaylistItemPort playlistItemPort;  // Port interface, not JPA repo
 
     // Constructor injection - no @Autowired needed with single constructor
-    public PlaylistServiceImpl(
-            PlaylistItemRepository playlistItemRepository,
-            ChannelRepository channelRepository) {
-        this.playlistItemRepository = playlistItemRepository;
-        this.channelRepository = channelRepository;
+    public PlaylistServiceImpl(PlaylistItemPort playlistItemPort) {
+        this.playlistItemPort = playlistItemPort;
+    }
+}
+
+// Adapter in infrastructure implements the port
+@Repository
+public class PlaylistItemAdapter implements PlaylistItemPort {
+    private final PlaylistItemJpaRepository jpaRepository;  // Spring Data JPA
+
+    public PlaylistItemAdapter(PlaylistItemJpaRepository jpaRepository) {
+        this.jpaRepository = jpaRepository;
+    }
+
+    @Override
+    public PlaylistItem findById(String id) {
+        return jpaRepository.findById(id)
+            .map(this::toCoreEntity)
+            .orElse(null);
+    }
+
+    private PlaylistItem toCoreEntity(PlaylistItemEntity entity) {
+        return new PlaylistItem(entity.getId(), entity.getChannelId(),
+                                entity.getTitle(), entity.getIndex());
     }
 }
 ```
@@ -332,9 +410,13 @@ MOVE from oldIndex to newIndex:
 
 ```
 src/test/java/com/evertz/playlist/
-├── controller/              # @WebMvcTest - Controller unit tests
-├── service/                 # Unit tests with Mockito
-├── repository/              # @DataJpaTest - Repository tests
+├── core/                    # Pure unit tests (no Spring context)
+│   └── model/               # Domain entity tests
+├── application/             # Unit tests with Mockito
+│   └── service/             # Service tests with mocked ports
+├── infrastructure/          # Framework-dependent tests
+│   ├── api/                 # @WebMvcTest - Controller unit tests
+│   └── persistence/         # @DataJpaTest - Repository tests
 └── integration/             # @SpringBootTest - Full integration tests (E2E)
 ```
 
