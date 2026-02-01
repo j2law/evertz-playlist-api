@@ -61,16 +61,16 @@ This is an HTTP REST API service for managing broadcaster channel playlists with
    - Business rules embedded in entities
 
 2. **Application Layer** (`application/`) - Business logic orchestration
-   - Service interfaces and implementations
+   - Service classes (concrete implementations, no interfaces per YAGNI)
    - Persistence port interfaces (abstractions for data access)
    - Use case orchestration
    - Depends only on Core layer
 
 3. **Infrastructure Layer** (`infrastructure/`) - Framework-dependent implementations
    - REST Controllers + Request/Response DTOs
-   - JPA Entities (separate from Core entities, with `@Entity` annotations)
+   - JPA DAOs (separate from Core entities, with `@Entity` annotations)
    - Spring Data JPA Repositories (implements persistence ports)
-   - Mappers between JPA entities and Core entities
+   - Adapters that map between JPA DAOs and Core entities
    - Configuration classes
    - Depends on Application and Core layers
 
@@ -81,14 +81,14 @@ com.evertz.playlist
 │   ├── model/                   # Pure domain entities
 │   └── exception/               # Domain exceptions
 ├── application/                 # Business logic layer
-│   ├── service/                 # Service interfaces and implementations
+│   ├── service/                 # Service classes (concrete, no interfaces per YAGNI)
 │   └── port/                    # Persistence port interfaces
 └── infrastructure/              # Framework-dependent
     ├── api/                     # REST controllers
-    │   ├── controller/          # Controllers
+    │   ├── controller/          # Controllers + GlobalExceptionHandler
     │   └── dto/                 # Request/Response DTOs
     ├── persistence/             # Database layer
-    │   ├── entity/              # JPA entities (with annotations)
+    │   ├── dao/                 # JPA DAOs (with @Entity annotations)
     │   ├── repository/          # Spring Data JPA repositories
     │   └── adapter/             # Adapters implementing ports
     └── config/                  # Spring configuration
@@ -100,7 +100,7 @@ com.evertz.playlist
 - Core has ZERO external dependencies (no Spring, no JPA, no frameworks)
 - Dependencies always point inward (toward Core)
 
-**Key Principle:** Core entities are pure Java classes. JPA entities in Infrastructure are separate classes that map to/from Core entities. This keeps the domain model clean and testable without framework coupling.
+**Key Principle:** Core entities are pure Java classes. JPA DAOs in Infrastructure are separate classes that map to/from Core entities. This keeps the domain model clean and testable without framework coupling.
 
 ### DTOs and Persistence
 
@@ -119,27 +119,39 @@ public record CreatePlaylistItemRequest(
     String clientFingerprint
 ) {}
 
-// Response DTO (infrastructure/api/dto/)
+// Response DTOs (infrastructure/api/dto/)
 public record PlaylistItemResponse(
-    String id,
-    String title,
-    int index
+    String itemId,
+    int index,
+    String title
 ) {}
 
-// Manual mapping in controller or dedicated mapper
-public static PlaylistItemResponse toResponse(PlaylistItem coreEntity) {
-    return new PlaylistItemResponse(
-        coreEntity.getId(),
-        coreEntity.getTitle(),
-        coreEntity.getIndex()
-    );
-}
+public record PageInfo(
+    int limit,
+    int offset,
+    Integer nextOffset,
+    boolean hasMore
+) {}
+
+public record PlaylistResponse(
+    List<PlaylistItemResponse> items,
+    PageInfo page,
+    int totalCount,
+    String serverFingerprint
+) {}
+
+// Manual mapping in controller
+PlaylistItemResponse itemResponse = new PlaylistItemResponse(
+    coreEntity.getId(),
+    coreEntity.getIndex(),
+    coreEntity.getTitle()
+);
 ```
 
-**JPA Entities vs Core Entities:**
+**JPA DAOs vs Core Entities:**
 - Core entities (`core/model/`) are pure Java classes with no annotations
-- JPA entities (`infrastructure/persistence/entity/`) have `@Entity`, `@Table`, etc.
-- Adapters map between JPA entities and Core entities
+- JPA DAOs (`infrastructure/persistence/dao/`) have `@Entity`, `@Table`, etc.
+- Adapters map between JPA DAOs and Core entities
 
 **Example:**
 ```java
@@ -152,10 +164,10 @@ public class PlaylistItem {
     // Pure Java, no annotations
 }
 
-// JPA entity (infrastructure/persistence/entity/)
+// JPA DAO (infrastructure/persistence/dao/)
 @Entity
 @Table(name = "playlist_items")
-public class PlaylistItemEntity {
+public class PlaylistItemDao {
     @Id
     private String id;
     @Column(name = "channel_id")
@@ -175,18 +187,19 @@ Always use constructor injection, never field injection:
 
 ```java
 // Service in application layer depends on port interface (not JPA repository directly)
+// No interface needed for services per YAGNI - use concrete class directly
 @Service
-public class PlaylistServiceImpl implements PlaylistService {
+public class PlaylistService {
     private final PlaylistItemPort playlistItemPort;  // Port interface, not JPA repo
 
     // Constructor injection - no @Autowired needed with single constructor
-    public PlaylistServiceImpl(PlaylistItemPort playlistItemPort) {
+    public PlaylistService(PlaylistItemPort playlistItemPort) {
         this.playlistItemPort = playlistItemPort;
     }
 }
 
 // Adapter in infrastructure implements the port
-@Repository
+@Component
 public class PlaylistItemAdapter implements PlaylistItemPort {
     private final PlaylistItemJpaRepository jpaRepository;  // Spring Data JPA
 
@@ -201,9 +214,9 @@ public class PlaylistItemAdapter implements PlaylistItemPort {
             .orElse(null);
     }
 
-    private PlaylistItem toCoreEntity(PlaylistItemEntity entity) {
-        return new PlaylistItem(entity.getId(), entity.getChannelId(),
-                                entity.getTitle(), entity.getIndex());
+    private PlaylistItem toCoreEntity(PlaylistItemDao dao) {
+        return new PlaylistItem(dao.getId(), dao.getChannelId(),
+                                dao.getTitle(), dao.getIndex());
     }
 }
 ```
@@ -248,6 +261,7 @@ public class GlobalExceptionHandler {
 - **Add features incrementally** - Start minimal, add as requirements emerge
 - **Delete unused code** - If it's not being used, remove it
 - **Avoid premature abstraction** - Don't create interfaces for single implementations until needed
+- **Services don't need interfaces** - Application layer services are concrete classes; only create interfaces for persistence ports (where we have adapter pattern)
 
 ## Critical Architectural Concepts
 

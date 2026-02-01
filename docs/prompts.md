@@ -12,3 +12,6 @@
     Infrastructure should consist of the Controller (API) and database. Application layer should
     consist of the service/logic and the persistence interface. The core layer should consist of
     the base entities/model. I only want to implement the core layer in this session.
+
+- Implement the get list items endpoint. Refer back to the specs for the expected response. 
+  - The DAO should not enter the application layer eg. conversion
