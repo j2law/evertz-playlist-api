@@ -70,4 +70,23 @@ public interface PlaylistItemPort {
      * @param itemId the item identifier
      */
     void deleteById(String itemId);
+
+    /**
+     * Shifts indexes of items in a range by the specified amount.
+     * Used when moving items.
+     *
+     * @param channelId   the channel identifier
+     * @param fromIndex   the starting index (inclusive)
+     * @param toIndex     the ending index (inclusive)
+     * @param shiftAmount the amount to shift
+     */
+    void shiftIndexesInRange(String channelId, int fromIndex, int toIndex, int shiftAmount);
+
+    /**
+     * Updates the index of a specific item.
+     *
+     * @param itemId   the item identifier
+     * @param newIndex the new index
+     */
+    void updateIndex(String itemId, int newIndex);
 }

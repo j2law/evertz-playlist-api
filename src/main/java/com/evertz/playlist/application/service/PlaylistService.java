@@ -55,6 +55,14 @@ public class PlaylistService {
     ) {}
 
     /**
+     * Result record for move operation.
+     */
+    public record MoveResult(
+            PlaylistItem item,
+            String serverFingerprint
+    ) {}
+
+    /**
      * Gets paginated playlist items for a channel.
      *
      * @param channelId the channel identifier
@@ -137,6 +145,72 @@ public class PlaylistService {
 
         String newFingerprint = computeFingerprint(channelId);
         return new DeleteResult(newFingerprint);
+    }
+
+    /**
+     * Moves an item to a new index.
+     * Validates fingerprint, shifts affected items, and updates the item's index.
+     *
+     * @param channelId         the channel identifier
+     * @param itemId            the item identifier
+     * @param newIndex          the target index (0-based)
+     * @param clientFingerprint the client's last-known fingerprint
+     * @return the move result with the moved item and updated fingerprint
+     */
+    @Transactional
+    public MoveResult moveItem(String channelId, String itemId, int newIndex, String clientFingerprint) {
+        String serverFingerprint = computeFingerprint(channelId);
+
+        if (!serverFingerprint.equals(clientFingerprint)) {
+            throw new FingerprintMismatchException(serverFingerprint);
+        }
+
+        PlaylistItem item = playlistItemPort.findById(itemId);
+        if (item == null || !item.getChannelId().equals(channelId)) {
+            throw new ResourceNotFoundException("Item not found: " + itemId);
+        }
+
+        int totalCount = playlistItemPort.countByChannelId(channelId);
+        validateMoveIndex(newIndex, totalCount);
+
+        int oldIndex = item.getIndex();
+
+        // If moving to the same index, no-op
+        if (oldIndex == newIndex) {
+            String unchangedFingerprint = computeFingerprint(channelId);
+            return new MoveResult(item, unchangedFingerprint);
+        }
+
+        // Move item to temporary index to avoid unique constraint violations during shift
+        playlistItemPort.updateIndex(itemId, -1);
+
+        // Shift affected items
+        if (oldIndex < newIndex) {
+            // Moving forward: shift items in range (oldIndex, newIndex] by -1
+            playlistItemPort.shiftIndexesInRange(channelId, oldIndex + 1, newIndex, -1);
+        } else {
+            // Moving backward: shift items in range [newIndex, oldIndex) by +1
+            playlistItemPort.shiftIndexesInRange(channelId, newIndex, oldIndex - 1, 1);
+        }
+
+        // Update the item's index to final position
+        playlistItemPort.updateIndex(itemId, newIndex);
+
+        // Re-fetch the moved item to return updated state
+        PlaylistItem movedItem = playlistItemPort.findById(itemId);
+
+        String newFingerprint = computeFingerprint(channelId);
+        return new MoveResult(movedItem, newFingerprint);
+    }
+
+    private void validateMoveIndex(int index, int totalCount) {
+        if (index < 0) {
+            throw new InvalidIndexException("Index must be non-negative");
+        }
+        // For move, valid range is 0 to totalCount-1 (existing items only)
+        if (index >= totalCount) {
+            throw new InvalidIndexException("Index " + index + " is out of range. Valid range is 0 to " + (totalCount - 1));
+        }
     }
 
     private void validateInsertIndex(int index, int totalCount) {

@@ -118,12 +118,15 @@ CREATE TABLE playlist_items (
     id VARCHAR(36) PRIMARY KEY,
     channel_id VARCHAR(100) NOT NULL,
     title VARCHAR(500) NOT NULL,
-    item_index INT NOT NULL
+    item_index INT NOT NULL,
+    UNIQUE (channel_id, item_index)
 );
 
 CREATE INDEX idx_channel_index ON playlist_items(channel_id, item_index);
 CREATE INDEX idx_channel_id ON playlist_items(channel_id);
 ```
+
+The unique constraint on `(channel_id, item_index)` ensures playlist integrity by preventing duplicate indexes within a channel.
 
 ## Index Shifting Implementation
 
@@ -133,6 +136,17 @@ All mutation operations (insert, delete, move) are wrapped in `@Transactional` t
 1. Fingerprint validation
 2. Index shifting
 3. Item creation/deletion/update
+
+### Unique Constraint Handling
+
+The database has a unique constraint on `(channel_id, item_index)` to enforce playlist integrity. This constraint can cause violations during shift operations if not handled carefully.
+
+**Solution for Move Operations**: Use a temporary index (-1) to avoid collisions:
+1. Move the item to temporary index (-1)
+2. Shift affected items
+3. Move the item to its final index
+
+This three-step approach ensures no two items temporarily share the same index during the operation.
 
 ### Shifting Logic
 
@@ -146,6 +160,7 @@ DELETE at deletedIndex:
   UPDATE SET index = index - 1 WHERE channelId = ? AND index > deletedIndex
 
 MOVE from oldIndex to newIndex:
+  UPDATE item SET index = -1  (temporary index to avoid constraint violation)
   If oldIndex < newIndex:
     UPDATE SET index = index - 1 WHERE channelId = ? AND index > oldIndex AND index <= newIndex
   Else if oldIndex > newIndex:

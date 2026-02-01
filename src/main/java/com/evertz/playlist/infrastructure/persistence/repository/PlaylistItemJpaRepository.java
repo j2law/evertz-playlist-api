@@ -39,11 +39,33 @@ public interface PlaylistItemJpaRepository extends JpaRepository<PlaylistItemDao
     /**
      * Shifts indexes of items at or after the given index by the specified amount.
      */
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE PlaylistItemDao p SET p.index = p.index + :shiftAmount WHERE p.channelId = :channelId AND p.index >= :fromIndex")
     void shiftIndexes(
             @Param("channelId") String channelId,
             @Param("fromIndex") int fromIndex,
             @Param("shiftAmount") int shiftAmount
+    );
+
+    /**
+     * Shifts indexes of items in a range by the specified amount.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PlaylistItemDao p SET p.index = p.index + :shiftAmount WHERE p.channelId = :channelId AND p.index >= :fromIndex AND p.index <= :toIndex")
+    void shiftIndexesInRange(
+            @Param("channelId") String channelId,
+            @Param("fromIndex") int fromIndex,
+            @Param("toIndex") int toIndex,
+            @Param("shiftAmount") int shiftAmount
+    );
+
+    /**
+     * Updates the index of a specific item.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE PlaylistItemDao p SET p.index = :newIndex WHERE p.id = :itemId")
+    void updateIndex(
+            @Param("itemId") String itemId,
+            @Param("newIndex") int newIndex
     );
 }

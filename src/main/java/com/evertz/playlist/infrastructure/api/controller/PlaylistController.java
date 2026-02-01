@@ -5,6 +5,8 @@ import com.evertz.playlist.infrastructure.api.dto.CreatePlaylistItemRequest;
 import com.evertz.playlist.infrastructure.api.dto.DeleteItemRequest;
 import com.evertz.playlist.infrastructure.api.dto.DeleteItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.InsertItemResponse;
+import com.evertz.playlist.infrastructure.api.dto.MoveItemRequest;
+import com.evertz.playlist.infrastructure.api.dto.MoveItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PageInfo;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistResponse;
@@ -93,5 +95,27 @@ public class PlaylistController {
         );
 
         return ResponseEntity.ok(new DeleteItemResponse(result.serverFingerprint()));
+    }
+
+    @PostMapping("/items/{itemId}/move")
+    public ResponseEntity<MoveItemResponse> moveItem(
+            @PathVariable String channelId,
+            @PathVariable String itemId,
+            @RequestBody MoveItemRequest request
+    ) {
+        PlaylistService.MoveResult result = playlistService.moveItem(
+                channelId,
+                itemId,
+                request.newIndex(),
+                request.clientFingerprint()
+        );
+
+        PlaylistItemResponse itemResponse = new PlaylistItemResponse(
+                result.item().getId(),
+                result.item().getIndex(),
+                result.item().getTitle()
+        );
+
+        return ResponseEntity.ok(new MoveItemResponse(itemResponse, result.serverFingerprint()));
     }
 }

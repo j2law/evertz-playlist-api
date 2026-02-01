@@ -15,3 +15,5 @@
 
 - Implement the get list items endpoint. Refer back to the specs for the expected response. 
   - The DAO should not enter the application layer eg. conversion
+
+- Implement the move item endpoint. Make any necessary updates to DESIGN.md where applicable.
