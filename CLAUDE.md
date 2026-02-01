@@ -164,6 +164,13 @@ public class GlobalExceptionHandler {
 - **Composition over Inheritance**: Favor has-a over is-a relationships
 - **Immutability**: Use records for DTOs, make entities mutable only where necessary
 
+### YAGNI (You Ain't Gonna Need It)
+
+- **Don't create code until you need it** - No placeholder implementations, no "just in case" abstractions
+- **Add features incrementally** - Start minimal, add as requirements emerge
+- **Delete unused code** - If it's not being used, remove it
+- **Avoid premature abstraction** - Don't create interfaces for single implementations until needed
+
 ## Critical Architectural Concepts
 
 ### 1. Optimistic Concurrency Control (Fingerprint Pattern)
