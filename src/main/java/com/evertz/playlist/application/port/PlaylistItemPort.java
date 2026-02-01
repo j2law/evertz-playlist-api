@@ -37,4 +37,22 @@ public interface PlaylistItemPort {
      * @return the total count
      */
     int countByChannelId(String channelId);
+
+    /**
+     * Saves a playlist item.
+     *
+     * @param item the item to save
+     * @return the saved item
+     */
+    PlaylistItem save(PlaylistItem item);
+
+    /**
+     * Shifts indexes of items at or after the given index by the specified amount.
+     * Used when inserting or deleting items.
+     *
+     * @param channelId  the channel identifier
+     * @param fromIndex  the starting index (inclusive)
+     * @param shiftAmount the amount to shift (positive for insert, negative for delete)
+     */
+    void shiftIndexes(String channelId, int fromIndex, int shiftAmount);
 }

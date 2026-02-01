@@ -2,6 +2,7 @@ package com.evertz.playlist.infrastructure.persistence.repository;
 
 import com.evertz.playlist.infrastructure.persistence.dao.PlaylistItemDao;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -34,4 +35,15 @@ public interface PlaylistItemJpaRepository extends JpaRepository<PlaylistItemDao
      * Counts items in a channel's playlist.
      */
     int countByChannelId(String channelId);
+
+    /**
+     * Shifts indexes of items at or after the given index by the specified amount.
+     */
+    @Modifying
+    @Query("UPDATE PlaylistItemDao p SET p.index = p.index + :shiftAmount WHERE p.channelId = :channelId AND p.index >= :fromIndex")
+    void shiftIndexes(
+            @Param("channelId") String channelId,
+            @Param("fromIndex") int fromIndex,
+            @Param("shiftAmount") int shiftAmount
+    );
 }

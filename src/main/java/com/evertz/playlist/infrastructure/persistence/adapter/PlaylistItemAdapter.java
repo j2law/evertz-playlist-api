@@ -43,12 +43,33 @@ public class PlaylistItemAdapter implements PlaylistItemPort {
         return jpaRepository.countByChannelId(channelId);
     }
 
+    @Override
+    public PlaylistItem save(PlaylistItem item) {
+        PlaylistItemDao dao = toDao(item);
+        PlaylistItemDao savedDao = jpaRepository.save(dao);
+        return toCoreEntity(savedDao);
+    }
+
+    @Override
+    public void shiftIndexes(String channelId, int fromIndex, int shiftAmount) {
+        jpaRepository.shiftIndexes(channelId, fromIndex, shiftAmount);
+    }
+
     private PlaylistItem toCoreEntity(PlaylistItemDao dao) {
         return new PlaylistItem(
                 dao.getId(),
                 dao.getChannelId(),
                 dao.getTitle(),
                 dao.getIndex()
+        );
+    }
+
+    private PlaylistItemDao toDao(PlaylistItem item) {
+        return new PlaylistItemDao(
+                item.getId(),
+                item.getChannelId(),
+                item.getTitle(),
+                item.getIndex()
         );
     }
 }

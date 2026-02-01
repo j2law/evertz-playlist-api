@@ -1,14 +1,18 @@
 package com.evertz.playlist.application.service;
 
 import com.evertz.playlist.application.port.PlaylistItemPort;
+import com.evertz.playlist.core.exception.FingerprintMismatchException;
+import com.evertz.playlist.core.exception.InvalidIndexException;
 import com.evertz.playlist.core.exception.InvalidPaginationException;
 import com.evertz.playlist.core.model.PlaylistItem;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Service for playlist operations.
@@ -35,6 +39,14 @@ public class PlaylistService {
     ) {}
 
     /**
+     * Result record for insert operation.
+     */
+    public record InsertResult(
+            PlaylistItem item,
+            String serverFingerprint
+    ) {}
+
+    /**
      * Gets paginated playlist items for a channel.
      *
      * @param channelId the channel identifier
@@ -50,6 +62,48 @@ public class PlaylistService {
         String fingerprint = computeFingerprint(channelId);
 
         return new PlaylistResult(items, totalCount, fingerprint);
+    }
+
+    /**
+     * Inserts a new item at the specified index.
+     * Validates fingerprint, shifts existing items, and saves the new item.
+     *
+     * @param channelId         the channel identifier
+     * @param title             the item title
+     * @param index             the target index (0-based)
+     * @param clientFingerprint the client's last-known fingerprint
+     * @return the insert result with the new item and updated fingerprint
+     */
+    @Transactional
+    public InsertResult insertItem(String channelId, String title, int index, String clientFingerprint) {
+        String serverFingerprint = computeFingerprint(channelId);
+
+        if (!serverFingerprint.equals(clientFingerprint)) {
+            throw new FingerprintMismatchException(serverFingerprint);
+        }
+
+        int totalCount = playlistItemPort.countByChannelId(channelId);
+        validateInsertIndex(index, totalCount);
+
+        // Shift existing items at or after the target index
+        playlistItemPort.shiftIndexes(channelId, index, 1);
+
+        // Create and save the new item
+        String itemId = UUID.randomUUID().toString();
+        PlaylistItem newItem = new PlaylistItem(itemId, channelId, title, index);
+        PlaylistItem savedItem = playlistItemPort.save(newItem);
+
+        String newFingerprint = computeFingerprint(channelId);
+        return new InsertResult(savedItem, newFingerprint);
+    }
+
+    private void validateInsertIndex(int index, int totalCount) {
+        if (index < 0) {
+            throw new InvalidIndexException("Index must be non-negative");
+        }
+        if (index > totalCount) {
+            throw new InvalidIndexException("Index " + index + " is out of range. Valid range is 0 to " + totalCount);
+        }
     }
 
     private void validatePagination(int offset, int limit) {

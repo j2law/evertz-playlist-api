@@ -1,8 +1,11 @@
 package com.evertz.playlist.infrastructure.api.controller;
 
+import com.evertz.playlist.core.exception.FingerprintMismatchException;
+import com.evertz.playlist.core.exception.InvalidIndexException;
 import com.evertz.playlist.core.exception.InvalidPaginationException;
 import com.evertz.playlist.core.exception.ResourceNotFoundException;
 import com.evertz.playlist.infrastructure.api.dto.ErrorResponse;
+import com.evertz.playlist.infrastructure.api.dto.FingerprintMismatchResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,6 +17,18 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(FingerprintMismatchException.class)
+    public ResponseEntity<FingerprintMismatchResponse> handleFingerprintMismatch(FingerprintMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new FingerprintMismatchResponse(ex.getServerFingerprint()));
+    }
+
+    @ExceptionHandler(InvalidIndexException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidIndex(InvalidIndexException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("INVALID_INDEX", ex.getMessage()));
+    }
 
     @ExceptionHandler(InvalidPaginationException.class)
     public ResponseEntity<ErrorResponse> handleInvalidPagination(InvalidPaginationException ex) {

@@ -1,12 +1,17 @@
 package com.evertz.playlist.infrastructure.api.controller;
 
 import com.evertz.playlist.application.service.PlaylistService;
+import com.evertz.playlist.infrastructure.api.dto.CreatePlaylistItemRequest;
+import com.evertz.playlist.infrastructure.api.dto.InsertItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PageInfo;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,5 +53,27 @@ public class PlaylistController {
                 result.totalCount(),
                 result.serverFingerprint()
         ));
+    }
+
+    @PostMapping("/items")
+    public ResponseEntity<InsertItemResponse> insertItem(
+            @PathVariable String channelId,
+            @RequestBody CreatePlaylistItemRequest request
+    ) {
+        PlaylistService.InsertResult result = playlistService.insertItem(
+                channelId,
+                request.title(),
+                request.index(),
+                request.clientFingerprint()
+        );
+
+        PlaylistItemResponse itemResponse = new PlaylistItemResponse(
+                result.item().getId(),
+                result.item().getIndex(),
+                result.item().getTitle()
+        );
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new InsertItemResponse(itemResponse, result.serverFingerprint()));
     }
 }
