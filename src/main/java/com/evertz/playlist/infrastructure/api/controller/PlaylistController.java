@@ -2,12 +2,15 @@ package com.evertz.playlist.infrastructure.api.controller;
 
 import com.evertz.playlist.application.service.PlaylistService;
 import com.evertz.playlist.infrastructure.api.dto.CreatePlaylistItemRequest;
+import com.evertz.playlist.infrastructure.api.dto.DeleteItemRequest;
+import com.evertz.playlist.infrastructure.api.dto.DeleteItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.InsertItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PageInfo;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -75,5 +78,20 @@ public class PlaylistController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new InsertItemResponse(itemResponse, result.serverFingerprint()));
+    }
+
+    @DeleteMapping("/items/{itemId}")
+    public ResponseEntity<DeleteItemResponse> deleteItem(
+            @PathVariable String channelId,
+            @PathVariable String itemId,
+            @RequestBody DeleteItemRequest request
+    ) {
+        PlaylistService.DeleteResult result = playlistService.deleteItem(
+                channelId,
+                itemId,
+                request.clientFingerprint()
+        );
+
+        return ResponseEntity.ok(new DeleteItemResponse(result.serverFingerprint()));
     }
 }

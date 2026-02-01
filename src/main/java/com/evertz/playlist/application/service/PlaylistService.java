@@ -4,6 +4,7 @@ import com.evertz.playlist.application.port.PlaylistItemPort;
 import com.evertz.playlist.core.exception.FingerprintMismatchException;
 import com.evertz.playlist.core.exception.InvalidIndexException;
 import com.evertz.playlist.core.exception.InvalidPaginationException;
+import com.evertz.playlist.core.exception.ResourceNotFoundException;
 import com.evertz.playlist.core.model.PlaylistItem;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +44,13 @@ public class PlaylistService {
      */
     public record InsertResult(
             PlaylistItem item,
+            String serverFingerprint
+    ) {}
+
+    /**
+     * Result record for delete operation.
+     */
+    public record DeleteResult(
             String serverFingerprint
     ) {}
 
@@ -95,6 +103,40 @@ public class PlaylistService {
 
         String newFingerprint = computeFingerprint(channelId);
         return new InsertResult(savedItem, newFingerprint);
+    }
+
+    /**
+     * Deletes an item from the playlist.
+     * Validates fingerprint, deletes the item, and shifts remaining items to close the gap.
+     *
+     * @param channelId         the channel identifier
+     * @param itemId            the item identifier
+     * @param clientFingerprint the client's last-known fingerprint
+     * @return the delete result with the updated fingerprint
+     */
+    @Transactional
+    public DeleteResult deleteItem(String channelId, String itemId, String clientFingerprint) {
+        String serverFingerprint = computeFingerprint(channelId);
+
+        if (!serverFingerprint.equals(clientFingerprint)) {
+            throw new FingerprintMismatchException(serverFingerprint);
+        }
+
+        PlaylistItem item = playlistItemPort.findById(itemId);
+        if (item == null || !item.getChannelId().equals(channelId)) {
+            throw new ResourceNotFoundException("Item not found: " + itemId);
+        }
+
+        int deletedIndex = item.getIndex();
+
+        // Delete the item
+        playlistItemPort.deleteById(itemId);
+
+        // Shift items after the deleted item by -1 to close the gap
+        playlistItemPort.shiftIndexes(channelId, deletedIndex + 1, -1);
+
+        String newFingerprint = computeFingerprint(channelId);
+        return new DeleteResult(newFingerprint);
     }
 
     private void validateInsertIndex(int index, int totalCount) {

@@ -55,6 +55,18 @@ public class PlaylistItemAdapter implements PlaylistItemPort {
         jpaRepository.shiftIndexes(channelId, fromIndex, shiftAmount);
     }
 
+    @Override
+    public PlaylistItem findById(String itemId) {
+        return jpaRepository.findById(itemId)
+                .map(this::toCoreEntity)
+                .orElse(null);
+    }
+
+    @Override
+    public void deleteById(String itemId) {
+        jpaRepository.deleteById(itemId);
+    }
+
     private PlaylistItem toCoreEntity(PlaylistItemDao dao) {
         return new PlaylistItem(
                 dao.getId(),

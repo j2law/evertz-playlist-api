@@ -1,0 +1,179 @@
+# Design Document
+
+## Overview
+
+This document describes the key design decisions for the Broadcaster Playlist Service API.
+
+## Client Fingerprint Transmission
+
+### Decision: Request Body
+
+The `clientFingerprint` is passed via **request body** for all mutation operations (insert, delete, move, sync-check).
+
+### Alternatives Considered
+
+| Method | Pros | Cons |
+|--------|------|------|
+| **Request Body** | Consistent with REST semantics for POST/DELETE with payloads; easy to document in OpenAPI; keeps all request data together | DELETE with body is less common (but valid per HTTP spec) |
+| Header (`X-Client-Fingerprint`) | Works for all HTTP methods; doesn't require body for DELETE | Non-standard header; harder to discover; separates related data |
+| Query Parameter | Simple; works for all methods | Exposes fingerprint in URL logs; limited length; not semantic |
+
+### Rationale
+
+1. **Consistency**: All mutation endpoints use the same pattern - fingerprint in the request body alongside other operation data
+2. **Semantics**: The fingerprint is logically part of the operation request, not metadata
+3. **Discoverability**: Request body fields are clearly documented in OpenAPI/Swagger
+4. **Security**: Fingerprints don't appear in URL logs or browser history
+
+### Implementation
+
+**Insert** (`POST /api/channels/{channelId}/playlist/items`):
+```json
+{ "title": "...", "index": 0, "clientFingerprint": "..." }
+```
+
+**Delete** (`DELETE /api/channels/{channelId}/playlist/items/{itemId}`):
+```json
+{ "clientFingerprint": "..." }
+```
+
+**Move** (`POST /api/channels/{channelId}/playlist/items/{itemId}/move`):
+```json
+{ "newIndex": 5, "clientFingerprint": "..." }
+```
+
+**Sync-check** (`POST /api/channels/{channelId}/playlist/sync-check`):
+```json
+{ "clientFingerprint": "..." }
+```
+
+## Fingerprint Algorithm
+
+### Decision: SHA-256 of Ordered Index:ItemId Pairs
+
+The server fingerprint is computed as:
+```
+SHA-256("0:itemId0|1:itemId1|2:itemId2|...")
+```
+
+### Rationale
+
+1. **Deterministic**: Same playlist state always produces the same fingerprint
+2. **Order-sensitive**: Captures both item identity and position
+3. **Collision-resistant**: SHA-256 provides sufficient uniqueness for this use case
+4. **Efficient**: Linear scan of playlist items; hash computation is fast
+
+### Empty Playlist
+
+An empty playlist produces the SHA-256 hash of an empty string:
+```
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
+## Pagination Strategy
+
+### Decision: Offset-Based Pagination
+
+Using simple offset/limit pagination with fingerprint staleness detection.
+
+### Response Structure
+
+```json
+{
+  "items": [],
+  "page": {
+    "limit": 50,
+    "offset": 0,
+    "nextOffset": 50,
+    "hasMore": true
+  },
+  "totalCount": 100,
+  "serverFingerprint": "abc123..."
+}
+```
+
+### Tradeoffs
+
+| Aspect | Offset Pagination | Cursor Pagination |
+|--------|------------------|-------------------|
+| Simplicity | Simple to implement and use | More complex |
+| Mutation handling | Can skip/duplicate items if list changes | Handles mutations better |
+| Random access | Supports jumping to any page | Sequential only |
+
+### Mitigation
+
+The `serverFingerprint` in every response allows clients to detect when the playlist has changed between page fetches. Clients can re-fetch from the beginning if needed.
+
+## Persistence Layer
+
+### Decision: H2 Embedded Database with Spring Data JPA
+
+- **H2**: Embedded, file-based database for persistence across restarts
+- **Spring Data JPA**: Standard ORM with declarative queries
+
+### Data Model
+
+```sql
+CREATE TABLE playlist_items (
+    id VARCHAR(36) PRIMARY KEY,
+    channel_id VARCHAR(100) NOT NULL,
+    title VARCHAR(500) NOT NULL,
+    item_index INT NOT NULL
+);
+
+CREATE INDEX idx_channel_index ON playlist_items(channel_id, item_index);
+CREATE INDEX idx_channel_id ON playlist_items(channel_id);
+```
+
+## Index Shifting Implementation
+
+### Atomicity
+
+All mutation operations (insert, delete, move) are wrapped in `@Transactional` to ensure atomicity of:
+1. Fingerprint validation
+2. Index shifting
+3. Item creation/deletion/update
+
+### Shifting Logic
+
+```
+INSERT at targetIndex:
+  UPDATE SET index = index + 1 WHERE channelId = ? AND index >= targetIndex
+  INSERT new item at targetIndex
+
+DELETE at deletedIndex:
+  DELETE item
+  UPDATE SET index = index - 1 WHERE channelId = ? AND index > deletedIndex
+
+MOVE from oldIndex to newIndex:
+  If oldIndex < newIndex:
+    UPDATE SET index = index - 1 WHERE channelId = ? AND index > oldIndex AND index <= newIndex
+  Else if oldIndex > newIndex:
+    UPDATE SET index = index + 1 WHERE channelId = ? AND index >= newIndex AND index < oldIndex
+  UPDATE item SET index = newIndex
+```
+
+## API Schema Pattern
+
+### Decision: REST with Structured Error Responses
+
+Following REST conventions with consistent error response format:
+
+**Standard errors** (400, 404):
+```json
+{ "errorCode": "ERROR_CODE", "message": "Human-readable message" }
+```
+
+**Fingerprint mismatch** (409):
+```json
+{ "errorCode": "PLAYLIST_FINGERPRINT_MISMATCH", "serverFingerprint": "..." }
+```
+
+### Error Codes
+
+| HTTP Status | Error Code | Description |
+|-------------|------------|-------------|
+| 400 | `INVALID_PAGINATION` | Invalid offset/limit parameters |
+| 400 | `INVALID_INDEX` | Index out of valid range |
+| 404 | `NOT_FOUND` | Item or resource not found |
+| 409 | `PLAYLIST_FINGERPRINT_MISMATCH` | Client fingerprint doesn't match server |

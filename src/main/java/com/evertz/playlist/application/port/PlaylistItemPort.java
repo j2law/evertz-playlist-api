@@ -55,4 +55,19 @@ public interface PlaylistItemPort {
      * @param shiftAmount the amount to shift (positive for insert, negative for delete)
      */
     void shiftIndexes(String channelId, int fromIndex, int shiftAmount);
+
+    /**
+     * Finds a playlist item by its ID.
+     *
+     * @param itemId the item identifier
+     * @return the playlist item, or null if not found
+     */
+    PlaylistItem findById(String itemId);
+
+    /**
+     * Deletes a playlist item by its ID.
+     *
+     * @param itemId the item identifier
+     */
+    void deleteById(String itemId);
 }
