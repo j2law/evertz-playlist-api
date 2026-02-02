@@ -25,3 +25,5 @@
 - Implement the sync-check endpoint. Make any necessary updates to DESIGN.md where applicable and refer back to the specs for the expected response.
 
 - Now create the end-to-end tests based on the expectations listed in the specs, including all must-haves.
+
+- Create a README.md file for the project, following the expectations listed in the specs.

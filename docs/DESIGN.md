@@ -278,3 +278,21 @@ Following REST conventions with consistent error response format:
 | 400 | `INVALID_INDEX` | Index out of valid range |
 | 404 | `NOT_FOUND` | Item or resource not found |
 | 409 | `PLAYLIST_FINGERPRINT_MISMATCH` | Client fingerprint doesn't match server |
+
+## Assumptions & Limitations
+
+### Key Assumptions
+
+- **0-based indexing**: Indexes run from `0` to `N-1`
+- **Server-generated IDs**: Server generates UUIDs; clients don't provide itemId
+- **Auto-created channels**: Channels are created implicitly on first insert
+- **Fingerprint scope**: Only item IDs and positions affect fingerprint (not title changes)
+
+### Known Limitations
+
+- **Single-process only**: H2 file mode doesn't support multiple JVM connections
+- **Not production-grade**: H2 is designed for development/testing; use PostgreSQL/MySQL for production
+- **Offset pagination under mutation**: Can skip/duplicate items if list changes between page fetches (mitigated by fingerprint detection)
+- **No authentication**: API has no auth layer; would need to add for production
+
+For detailed documentation of all assumptions and edge case handling, see [ASSUMPTIONS.md](ASSUMPTIONS.md).
