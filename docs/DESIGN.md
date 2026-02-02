@@ -111,6 +111,34 @@ The `serverFingerprint` in every response allows clients to detect when the play
 - **H2**: Embedded, file-based database for persistence across restarts
 - **Spring Data JPA**: Standard ORM with declarative queries
 
+### Why H2?
+
+| Reason | Explanation |
+|--------|-------------|
+| **Zero configuration** | No external database server required; runs embedded in the JVM |
+| **File-based persistence** | Data survives process restarts without external dependencies |
+| **SQL compatibility** | Supports standard SQL, making it easy to migrate to PostgreSQL/MySQL later |
+| **Spring Boot integration** | Auto-configured with Spring Boot; minimal setup required |
+| **Fast for testing** | In-memory mode available for fast test execution |
+
+### Why Spring Data JPA?
+
+| Reason | Explanation |
+|--------|-------------|
+| **Declarative repositories** | Query methods derived from method names; less boilerplate |
+| **Transaction management** | `@Transactional` handles commit/rollback automatically |
+| **Portability** | Can switch databases without changing repository code |
+| **Bulk operations** | `@Query` and `@Modifying` support efficient batch updates |
+
+### Limitations
+
+| Limitation | Impact | Mitigation |
+|------------|--------|------------|
+| **Single-process only** | H2 file mode doesn't support multiple JVM connections | Acceptable for this use case; use PostgreSQL for multi-instance deployment |
+| **Not production-grade** | H2 is designed for development/testing, not high-load production | Replace with PostgreSQL/MySQL for production; schema is compatible |
+| **No horizontal scaling** | Embedded database can't be shared across instances | Would need external database + connection pooling for scaling |
+| **Limited concurrency** | File-based H2 has lower concurrent write throughput | Sufficient for 100+ channels with moderate write load |
+
 ### Data Model
 
 ```sql

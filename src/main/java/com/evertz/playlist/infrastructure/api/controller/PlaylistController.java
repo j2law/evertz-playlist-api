@@ -12,6 +12,7 @@ import com.evertz.playlist.infrastructure.api.dto.PlaylistItemResponse;
 import com.evertz.playlist.infrastructure.api.dto.PlaylistResponse;
 import com.evertz.playlist.infrastructure.api.dto.SyncCheckRequest;
 import com.evertz.playlist.infrastructure.api.dto.SyncCheckResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -65,7 +66,7 @@ public class PlaylistController {
     @PostMapping("/items")
     public ResponseEntity<InsertItemResponse> insertItem(
             @PathVariable String channelId,
-            @RequestBody CreatePlaylistItemRequest request
+            @Valid @RequestBody CreatePlaylistItemRequest request
     ) {
         PlaylistService.InsertResult result = playlistService.insertItem(
                 channelId,
@@ -88,7 +89,7 @@ public class PlaylistController {
     public ResponseEntity<DeleteItemResponse> deleteItem(
             @PathVariable String channelId,
             @PathVariable String itemId,
-            @RequestBody DeleteItemRequest request
+            @Valid @RequestBody DeleteItemRequest request
     ) {
         PlaylistService.DeleteResult result = playlistService.deleteItem(
                 channelId,
@@ -103,7 +104,7 @@ public class PlaylistController {
     public ResponseEntity<MoveItemResponse> moveItem(
             @PathVariable String channelId,
             @PathVariable String itemId,
-            @RequestBody MoveItemRequest request
+            @Valid @RequestBody MoveItemRequest request
     ) {
         PlaylistService.MoveResult result = playlistService.moveItem(
                 channelId,
@@ -124,7 +125,7 @@ public class PlaylistController {
     @PostMapping("/sync-check")
     public ResponseEntity<SyncCheckResponse> syncCheck(
             @PathVariable String channelId,
-            @RequestBody SyncCheckRequest request
+            @Valid @RequestBody SyncCheckRequest request
     ) {
         PlaylistService.SyncCheckResult result = playlistService.syncCheck(
                 channelId,

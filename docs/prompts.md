@@ -16,4 +16,12 @@
 - Implement the get list items endpoint. Refer back to the specs for the expected response. 
   - The DAO should not enter the application layer eg. conversion
 
-- Implement the move item endpoint. Make any necessary updates to DESIGN.md where applicable.
+- Implement the insert item endpoint. Make any necessary updates to DESIGN.md where applicable and refer back to the specs for the expected response.
+
+- Implement the delete item endpoint. Make any necessary updates to DESIGN.md where applicable and refer back to the specs for the expected response.
+
+- Implement the move item endpoint. Make any necessary updates to DESIGN.md where applicable and refer back to the specs for the expected response.
+
+- Implement the sync-check endpoint. Make any necessary updates to DESIGN.md where applicable and refer back to the specs for the expected response.
+
+- Now create the end-to-end tests based on the expectations listed in the specs, including all must-haves.

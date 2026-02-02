@@ -85,8 +85,8 @@ Fingerprint: SHA256("0:abc|1:def|2:ghi") → "a1b2c3d4..."
 **Error response:**
 ```json
 {
-  "errorCode": "INDEX_OUT_OF_RANGE",
-  "message": "Index 50 is out of range. Valid range: 0-10 for insert."
+  "errorCode": "INVALID_INDEX",
+  "message": "Index 50 is out of range. Valid range is 0 to 10"
 }
 ```
 
@@ -101,8 +101,8 @@ Fingerprint: SHA256("0:abc|1:def|2:ghi") → "a1b2c3d4..."
 **Response:**
 ```json
 {
-  "errorCode": "ITEM_NOT_FOUND",
-  "message": "Item with id 'xyz' not found in channel 'CH1'"
+  "errorCode": "NOT_FOUND",
+  "message": "Item not found: xyz"
 }
 ```
 
@@ -114,21 +114,18 @@ Fingerprint: SHA256("0:abc|1:def|2:ghi") → "a1b2c3d4..."
 
 **Decision:** Request body for all mutation operations
 
-**Insert:**
+**Insert:** `POST /api/channels/CH1/playlist/items`
 ```json
-POST /api/channels/CH1/playlist/items
 { "title": "...", "index": 0, "clientFingerprint": "abc123" }
 ```
 
-**Delete:**
+**Delete:** `DELETE /api/channels/CH1/playlist/items/ITEM_ID`
 ```json
-DELETE /api/channels/CH1/playlist/items/ITEM_ID
 { "clientFingerprint": "abc123" }
 ```
 
-**Move:**
+**Move:** `POST /api/channels/CH1/playlist/items/ITEM_ID/move`
 ```json
-POST /api/channels/CH1/playlist/items/ITEM_ID/move
 { "newIndex": 5, "clientFingerprint": "abc123" }
 ```
 
@@ -172,35 +169,35 @@ POST /api/channels/CH1/playlist/items/ITEM_ID/move
 
 **Decision:** 400 Bad Request for validation errors
 
+### Custom Validation (with custom error format)
+
 | Validation | Error Code | Example |
 |------------|------------|---------|
-| Missing required field | `MISSING_FIELD` | No `clientFingerprint` on mutation |
-| Invalid field type | `INVALID_TYPE` | `index: "abc"` instead of number |
+| Missing clientFingerprint | `VALIDATION_ERROR` | No `clientFingerprint` on mutation |
+| Empty/blank title | `VALIDATION_ERROR` | `title: ""` or `title: "   "` |
 | Negative index | `INVALID_INDEX` | `index: -1` |
-| Empty/blank title | `INVALID_TITLE` | `title: ""` or `title: "   "` |
-| Invalid JSON body | `MALFORMED_JSON` | Unparseable JSON |
-| Missing request body | `MISSING_BODY` | DELETE with no body |
+| Out-of-range index | `INVALID_INDEX` | `index: 9999` on small list |
 | Invalid pagination | `INVALID_PAGINATION` | `offset: -1` or `limit: 0` or `limit: 500` |
 
 **Example responses:**
 
-Missing required field:
+Missing clientFingerprint:
 ```json
 {
-  "errorCode": "MISSING_FIELD",
-  "message": "Field 'clientFingerprint' is required"
+  "errorCode": "VALIDATION_ERROR",
+  "message": "clientFingerprint is required"
 }
 ```
 
-Invalid field type:
+Empty/blank title:
 ```json
 {
-  "errorCode": "INVALID_TYPE",
-  "message": "Field 'index' must be an integer"
+  "errorCode": "VALIDATION_ERROR",
+  "message": "Title must not be empty or blank"
 }
 ```
 
-Negative index:
+Invalid index:
 ```json
 {
   "errorCode": "INVALID_INDEX",
@@ -208,35 +205,29 @@ Negative index:
 }
 ```
 
-Empty/blank title:
-```json
-{
-  "errorCode": "INVALID_TITLE",
-  "message": "Title must not be empty or blank"
-}
-```
-
-Malformed JSON:
-```json
-{
-  "errorCode": "MALFORMED_JSON",
-  "message": "Request body contains invalid JSON"
-}
-```
-
-Missing request body:
-```json
-{
-  "errorCode": "MISSING_BODY",
-  "message": "Request body is required"
-}
-```
-
 Invalid pagination:
 ```json
 {
   "errorCode": "INVALID_PAGINATION",
-  "message": "Offset must be >= 0 and limit must be between 1 and 100"
+  "message": "Limit must be between 1 and 100"
+}
+```
+
+### Spring Default Handling (with Spring's error format)
+
+| Validation | HTTP Status | Example |
+|------------|-------------|---------|
+| Invalid field type | 400 | `index: "abc"` instead of number |
+| Malformed JSON | 400 | Unparseable JSON |
+| Missing request body | 400 | DELETE with no body |
+
+These cases return Spring's default error format:
+```json
+{
+  "timestamp": "2026-02-01T...",
+  "status": 400,
+  "error": "Bad Request",
+  "path": "/api/channels/CH1/playlist/items"
 }
 ```
 
@@ -245,7 +236,10 @@ Invalid pagination:
 - `limit`: must be >= 1 and <= 100
 
 **Title constraints:**
-- Must not be null, empty, or blank
+- Must not be null, empty, or blank (validated via `@NotBlank`)
+
+**clientFingerprint constraints:**
+- Must not be null (validated via `@NotNull`)
 
 ---
 
@@ -253,8 +247,8 @@ Invalid pagination:
 
 | Status | When |
 |--------|------|
-| 200 | Success (GET, mutations that return data) |
-| 204 | Success with no content (DELETE) |
+| 200 | Success (GET, DELETE, move, sync-check) |
+| 201 | Success (insert - resource created) |
 | 400 | Malformed request, validation errors |
 | 404 | Item not found |
 | 409 | Fingerprint mismatch |
